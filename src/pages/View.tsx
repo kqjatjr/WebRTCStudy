@@ -12,7 +12,7 @@ const View = ({ socket, leaveRoom }: TProps) => {
 
   useEffect(() => {
     socket.on("welcome", () => {
-      setMessage((prev) => [...prev, "환영합니다"]);
+      setMessage((prev) => [...prev, "환s영합니다"]);
     });
   }, [socket]);
 
