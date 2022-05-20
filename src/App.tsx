@@ -1,21 +1,22 @@
-import { useEffect, useState } from "react";
-import { Socket } from "socket.io-client";
 import "./App.css";
+import { Route, Routes } from "react-router-dom";
+import io from "socket.io-client";
 import Home from "./pages/Home";
 import View from "./pages/View";
 
-function App({ socket }: { socket: Socket }) {
-  const [joinRoom, setJoinRoom] = useState(false);
+const socket = io("http://localhost:8080");
 
+console.log(socket);
+
+const App = () => {
   return (
     <div className="App">
-      {joinRoom ? (
-        <View socket={socket} leaveRoom={setJoinRoom} />
-      ) : (
-        <Home socket={socket} joinRoom={setJoinRoom} />
-      )}
+      <Routes>
+        <Route path="/" element={<Home socket={socket} />} />
+        <Route path="/chat" element={<View socket={socket} />} />
+      </Routes>
     </div>
   );
-}
+};
 
 export default App;

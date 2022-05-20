@@ -1,21 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Socket } from "socket.io-client";
 
 type TProps = {
-  socket: Socket;
-  joinRoom: React.Dispatch<React.SetStateAction<boolean>>;
+  socket?: Socket;
 };
-const Home = ({ socket, joinRoom }: TProps) => {
+const Home = ({ socket }: TProps) => {
   const [roomNumber, setRoomNumber] = useState("");
+  const [nickname, setNickname] = useState("");
+  const navigate = useNavigate();
 
   const onChangeRoomNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRoomNumber(e.target.value);
   };
 
+  const onChangeNickname = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNickname(e.target.value);
+  };
+
   const onSubmit = () => {
-    socket.emit("enter_room", { roomName: roomNumber });
+    if (!socket?.connected) {
+      socket?.connect();
+    }
+    socket?.emit("enter_room", { roomName: roomNumber, nickname: nickname });
+    sessionStorage.setItem("nickname", nickname);
     setRoomNumber("");
-    joinRoom(true);
+    navigate("/chat");
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter") {
+      onSubmit();
+    }
   };
 
   return (
@@ -25,7 +41,14 @@ const Home = ({ socket, joinRoom }: TProps) => {
         value={roomNumber}
         onChange={onChangeRoomNumber}
       />
-      <button onClick={onSubmit}>방 입장</button>
+      <input
+        placeholder="사용하실 닉네임을 입력하세요"
+        value={nickname}
+        onChange={onChangeNickname}
+      />
+      <button onClick={onSubmit} onKeyDown={onKeyDown}>
+        방 입장
+      </button>
     </div>
   );
 };
