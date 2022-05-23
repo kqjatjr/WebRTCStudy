@@ -1,19 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Socket } from "socket.io-client";
 
 type TProps = {
   socket: Socket & { nickname?: string };
 };
 
-type TConstraints = {
-  video: boolean;
-  audio: boolean;
-};
-
 const ViewChat = ({ socket }: TProps) => {
+  const { roomName } = useParams();
   const [message, setMessage] = useState<string[]>([]);
-  const [currentRoomName, setCurrentRoomName] = useState("");
   const [mute, setMute] = useState(false);
   const [muteBtnText, setMuteBtnText] = useState("음소거 하기");
   const [camera, setCamera] = useState(true);
@@ -43,7 +38,7 @@ const ViewChat = ({ socket }: TProps) => {
       }
     };
 
-    const makeConnection = () => {
+    const makeConnection = async () => {
       myStream
         ?.getTracks()
         .forEach((track) => myPeerConnection?.addTrack(track, myStream));
@@ -88,13 +83,20 @@ const ViewChat = ({ socket }: TProps) => {
     socket.on("welcome", async (nickname, countRoom) => {
       const offer = await myPeerConnection?.createOffer();
       myPeerConnection.setLocalDescription(offer);
-      socket.emit("offer", offer, currentRoomName);
+      socket.emit("offer", offer, roomName);
       setUserCount(countRoom);
       setMessage((prev) => [...prev, `${nickname}님이 입장하셨습니다.`]);
     });
 
-    socket.on("offer", (offer) => {
+    socket.on("roomInfo", (countRoom) => {
+      setUserCount(countRoom);
+    });
+
+    socket.on("offer", async (offer) => {
       myPeerConnection.setRemoteDescription(offer);
+      const answer = await myPeerConnection.createAnswer();
+      myPeerConnection.setLocalDescription(answer);
+      socket.emit("answer", answer, roomName);
     });
 
     socket.on("bye", (nickname, countRoom) => {
@@ -102,13 +104,12 @@ const ViewChat = ({ socket }: TProps) => {
       setMessage((prev) => [...prev, `${nickname}님이 퇴장하셨습니다..`]);
     });
 
-    socket.on("roomInfo", (room, countRoom) => {
-      setUserCount(countRoom);
-      setCurrentRoomName(room);
-    });
-
     socket.on("new_message", (msg) => {
       setMessage((prev) => [...prev, msg]);
+    });
+
+    socket.on("answer", (answer) => {
+      myPeerConnection.setRemoteDescription(answer);
     });
 
     return () => {
@@ -127,13 +128,9 @@ const ViewChat = ({ socket }: TProps) => {
   };
 
   const onClickMessageSubmitButton = () => {
-    socket.emit(
-      "new_message",
-      { msg: inputValue, roomName: currentRoomName },
-      () => {
-        setMessage((prev) => [...prev, `${nickname} : ${inputValue}`]);
-      },
-    );
+    socket.emit("new_message", { msg: inputValue, roomName }, () => {
+      setMessage((prev) => [...prev, `${nickname} : ${inputValue}`]);
+    });
     setInputValue("");
   };
 
@@ -171,7 +168,7 @@ const ViewChat = ({ socket }: TProps) => {
   return (
     <div>
       <div style={{ border: "1px solid", marginBottom: "20px" }}>
-        방이름 : {currentRoomName}
+        방이름 : {roomName}
       </div>
       <div>현재인원 : {userCount} 명</div>
       <div>

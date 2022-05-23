@@ -2,7 +2,6 @@ const express = require("express");
 const app = express();
 const http = require("http");
 const { Server } = require("socket.io");
-const { instrument } = require("@socket.io/admin-ui");
 const server = http.createServer(app);
 
 const io = new Server(server, {
@@ -63,6 +62,9 @@ io.on("connection", (socket) => {
   socket.on("new_message", ({ msg, roomName }, done) => {
     socket.to(roomName).emit("new_message", `${socket.nickname} : ${msg}`);
     done();
+  });
+  socket.on("answer", (answer, roomName) => {
+    socket.to(roomName).emit("answer", answer);
   });
 });
 

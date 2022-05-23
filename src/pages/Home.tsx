@@ -10,6 +10,7 @@ const Home = ({ socket }: TProps) => {
   const [roomNumber, setRoomNumber] = useState("");
   const [openRooms, setOpenRooms] = useState<string[]>([]);
   const [nickname, setNickname] = useState("");
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,7 +35,7 @@ const Home = ({ socket }: TProps) => {
     socket?.emit("enter_room", { roomName: roomNumber, nickname: nickname });
     sessionStorage.setItem("nickname", nickname);
     setRoomNumber("");
-    navigate("/chat");
+    navigate(`/chat/${roomNumber}`);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {

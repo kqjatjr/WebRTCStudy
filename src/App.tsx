@@ -12,7 +12,7 @@ const App = () => {
     <div className="App">
       <Routes>
         <Route path="/" element={<Home socket={socket} />} />
-        <Route path="/chat" element={<ViewChat socket={socket} />} />
+        <Route path="/chat/:roomName" element={<ViewChat socket={socket} />} />
       </Routes>
     </div>
   );
