@@ -1,14 +1,14 @@
 const express = require("express");
 const app = express();
 const http = require("http");
+const { Server } = require("socket.io");
+const { instrument } = require("@socket.io/admin-ui");
 const server = http.createServer(app);
 
-const io = require("socket.io")(server, {
+const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    transports: ["websocket"],
-    upgrade: false,
+    origin: "*",
+    credentials: true,
   },
 });
 
@@ -17,7 +17,7 @@ const port = 8080;
 const publicRooms = () => {
   const {
     sockets: {
-      adepter: { rooms, sids },
+      adapter: { sids, rooms },
     },
   } = io;
 
@@ -31,19 +31,34 @@ const publicRooms = () => {
   return publicRooms;
 };
 
+const countRoom = (roomName) => {
+  return io.sockets.adapter.rooms.get(roomName)?.size;
+};
+
 io.on("connection", (socket) => {
   socket["nickname"] = "Anon";
   console.log("UserConnected", socket.id);
+  socket.emit("room_change", publicRooms());
+
+  socket.on("offer", (offer, roomName) => {
+    console.log(roomName, "123jhkjahlsdkfjha");
+    socket.to(roomName).emit("offer", offer);
+  });
+
   socket.on("enter_room", ({ roomName, nickname }) => {
     socket["nickname"] = nickname;
     socket.join(roomName);
-    socket.emit("roomInfo", roomName);
-    socket.to(roomName).emit("welcome", socket.nickname);
+    socket.emit("roomInfo", roomName, countRoom(roomName));
+    socket.to(roomName).emit("welcome", socket.nickname, countRoom(roomName));
+    io.sockets.emit("room_change", publicRooms());
   });
   socket.on("disconnecting", () => {
     socket.rooms.forEach((room) => {
-      socket.to(room).emit("bye", socket.nickname);
+      socket.to(room).emit("bye", socket.nickname, countRoom(room) - 1);
     });
+  });
+  socket.on("disconnect", () => {
+    io.sockets.emit("room_change", publicRooms());
   });
   socket.on("new_message", ({ msg, roomName }, done) => {
     socket.to(roomName).emit("new_message", `${socket.nickname} : ${msg}`);

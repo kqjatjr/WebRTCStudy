@@ -1,3 +1,4 @@
+import { count } from "console";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Socket } from "socket.io-client";
@@ -10,6 +11,7 @@ const View = ({ socket }: TProps) => {
   const [message, setMessage] = useState<string[]>([]);
   const [currentRoomName, setCurrentRoomName] = useState("");
   const [nickname] = useState(sessionStorage.getItem("nickname") || "");
+  const [userCount, setUserCount] = useState(0);
   const [inputValue, setInputValue] = useState("");
   const navigate = useNavigate();
 
@@ -17,15 +19,19 @@ const View = ({ socket }: TProps) => {
     if (!nickname) {
       navigate("/");
     }
-    socket.on("welcome", (nickname) => {
+
+    socket.on("welcome", (nickname, countRoom) => {
+      setUserCount(countRoom);
       setMessage((prev) => [...prev, `${nickname}님이 입장하셨습니다.`]);
     });
 
-    socket.on("bye", (nickname) => {
+    socket.on("bye", (nickname, countRoom) => {
+      setUserCount(countRoom);
       setMessage((prev) => [...prev, `${nickname}님이 퇴장하셨습니다..`]);
     });
 
-    socket.on("roomInfo", (room) => {
+    socket.on("roomInfo", (room, countRoom) => {
+      setUserCount(countRoom);
       setCurrentRoomName(room);
     });
 
@@ -59,17 +65,12 @@ const View = ({ socket }: TProps) => {
     setInputValue("");
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === "Enter") {
-      onClickMessageSubmitButton();
-    }
-  };
-
   return (
     <div>
       <div style={{ border: "1px solid", marginBottom: "20px" }}>
         방이름 : {currentRoomName}
       </div>
+      <div>현재인원 : {userCount} 명</div>
       <div>
         {message &&
           message.map((msg, idx) => {
