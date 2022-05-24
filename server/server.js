@@ -40,7 +40,6 @@ io.on("connection", (socket) => {
   socket.emit("room_change", publicRooms());
 
   socket.on("offer", (offer, roomName) => {
-    console.log(roomName, "123jhkjahlsdkfjha");
     socket.to(roomName).emit("offer", offer);
   });
 
@@ -65,6 +64,9 @@ io.on("connection", (socket) => {
   });
   socket.on("answer", (answer, roomName) => {
     socket.to(roomName).emit("answer", answer);
+  });
+  socket.on("ice", (ice, roomName) => {
+    socket.to(roomName).emit("ice", ice);
   });
 });
 

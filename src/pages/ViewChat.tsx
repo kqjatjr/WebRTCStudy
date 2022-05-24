@@ -19,11 +19,13 @@ const ViewChat = ({ socket }: TProps) => {
   const [inputValue, setInputValue] = useState("");
   const [cameraList, setCameraList] = useState<MediaDeviceInfo[]>();
   const [cameraSelect, setCameraSelect] = useState<string>();
-  const [myPeerConnection] = useState<RTCPeerConnection>(
-    () => new RTCPeerConnection(),
-  );
+  // const [myPeerConnection] = useState<RTCPeerConnection>(
+  //   () => new RTCPeerConnection(),
+  // );
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  let myPeerConnection: RTCPeerConnection = new RTCPeerConnection();
 
   useEffect(() => {
     const getCameras = async () => {
@@ -38,10 +40,12 @@ const ViewChat = ({ socket }: TProps) => {
       }
     };
 
-    const makeConnection = async () => {
-      myStream
+    const makeConnection = async (stream: MediaStream) => {
+      myPeerConnection.addEventListener("icecandidate", handleIce);
+
+      stream
         ?.getTracks()
-        .forEach((track) => myPeerConnection?.addTrack(track, myStream));
+        .forEach((track) => myPeerConnection?.addTrack(track, stream));
     };
 
     const getMedia = async () => {
@@ -58,14 +62,20 @@ const ViewChat = ({ socket }: TProps) => {
         setMyStream(stream);
         videoRef.current.srcObject = stream;
         videoRef.current.muted = false;
-        getCameras();
+        await getCameras();
+        await makeConnection(stream);
       } catch (err) {
         console.log(err);
       }
     };
 
+    const handleIce = (data: RTCPeerConnectionIceEvent) => {
+      console.log("sent candidate");
+      console.log(data);
+      socket.emit("ice", data.candidate, roomName);
+    };
+
     getMedia();
-    makeConnection();
 
     return () => {
       if (myStream) {
@@ -83,6 +93,7 @@ const ViewChat = ({ socket }: TProps) => {
     socket.on("welcome", async (nickname, countRoom) => {
       const offer = await myPeerConnection?.createOffer();
       myPeerConnection.setLocalDescription(offer);
+      console.log("sent the offer");
       socket.emit("offer", offer, roomName);
       setUserCount(countRoom);
       setMessage((prev) => [...prev, `${nickname}님이 입장하셨습니다.`]);
@@ -92,11 +103,22 @@ const ViewChat = ({ socket }: TProps) => {
       setUserCount(countRoom);
     });
 
+    // socket.on("offer", async (offer) => {
+    //   myPeerConnection.setRemoteDescription(offer);
+    //   const answer = await myPeerConnection.createAnswer();
+    //   myPeerConnection.setLocalDescription(answer);
+    //   socket.emit("answer", answer, roomName);
+    // });
+
     socket.on("offer", async (offer) => {
+      console.log("received the offer");
       myPeerConnection.setRemoteDescription(offer);
       const answer = await myPeerConnection.createAnswer();
       myPeerConnection.setLocalDescription(answer);
       socket.emit("answer", answer, roomName);
+      console.log(myPeerConnection);
+
+      console.log("sent the answer");
     });
 
     socket.on("bye", (nickname, countRoom) => {
@@ -108,15 +130,25 @@ const ViewChat = ({ socket }: TProps) => {
       setMessage((prev) => [...prev, msg]);
     });
 
+    // socket.on("answer", (answer) => {
+    //   myPeerConnection.setRemoteDescription(answer);
+    // });
     socket.on("answer", (answer) => {
+      console.log("received the answer");
       myPeerConnection.setRemoteDescription(answer);
+      console.log(myPeerConnection);
+    });
+
+    socket.on("ice", (ice) => {
+      console.log("received candidate");
+      myPeerConnection.addIceCandidate(ice);
     });
 
     return () => {
       socket.off();
       sessionStorage.removeItem("nickname");
     };
-  }, []);
+  }, [myPeerConnection]);
 
   const onClickLeaveBtn = () => {
     socket.disconnect();
