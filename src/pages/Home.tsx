@@ -3,22 +3,22 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Socket } from "socket.io-client";
 
-type TProps = {
-  socket: Socket;
-};
-const Home = ({ socket }: TProps) => {
+// type TProps = {
+//   socket: Socket;
+// };
+const Home = () => {
   const [roomNumber, setRoomNumber] = useState("");
   const [openRooms, setOpenRooms] = useState<string[]>([]);
   const [nickname, setNickname] = useState("");
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    socket.connect();
-    socket.on("room_change", (rooms) => {
-      setOpenRooms(rooms);
-    });
-  }, [socket]);
+  // useEffect(() => {
+  //   socket.connect();
+  //   socket.on("room_change", (rooms) => {
+  //     setOpenRooms(rooms);
+  //   });
+  // }, [socket]);
 
   const onChangeRoomNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRoomNumber(e.target.value);
@@ -29,10 +29,10 @@ const Home = ({ socket }: TProps) => {
   };
 
   const onSubmit = () => {
-    if (!socket?.connected) {
-      socket?.connect();
-    }
-    socket?.emit("enter_room", { roomName: roomNumber, nickname: nickname });
+    // if (!socket?.connected) {
+    //   socket?.connect();
+    // }
+    // socket?.emit("enter_room", { roomName: roomNumber, nickname: nickname });
     sessionStorage.setItem("nickname", nickname);
     setRoomNumber("");
     navigate(`/chat/${roomNumber}`);

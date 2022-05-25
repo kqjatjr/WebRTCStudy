@@ -1,165 +1,163 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Socket } from "socket.io-client";
+import io, { Socket } from "socket.io-client";
 
-type TProps = {
-  socket: Socket & { nickname?: string };
-};
+// type TProps = {
+//   socket: Socket & { nickname?: string };
+// };
 
-const ChatView = ({ socket }: TProps) => {
-  const [mute, setMute] = useState(false);
-  const [muteBtnText, setMuteBtnText] = useState("음소거 하기");
-  const [camera, setCamera] = useState(true);
-  const [cameraText, setCameraText] = useState("카메라 끄기");
-  const [cameraList, setCameraList] = useState<MediaDeviceInfo[]>([]);
-  const [myStream, setMyStream] = useState<MediaStream>();
-  const [cameraSelect, setCameraSelect] = useState<string>();
-  const [myPeerConnection, setMyPeerConnection] = useState<RTCPeerConnection>(
-    () => new RTCPeerConnection(),
-  );
+const ChatView = () => {
+  const socketRef = useRef<Socket>();
+  const pcRef = useRef<RTCPeerConnection>();
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
   const { roomName } = useParams();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const navigate = useNavigate();
+
+  const setVideoTracks = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      if (!(pcRef.current && socketRef.current)) return;
+
+      stream.getTracks().forEach((track) => {
+        if (!pcRef.current) return;
+        pcRef.current.addTrack(track, stream);
+      });
+
+      pcRef.current.onicecandidate = (e) => {
+        if (e.candidate) {
+          if (!socketRef.current) return;
+          console.log("recv candidate");
+          socketRef.current.emit("candidate", e.candidate);
+        }
+      };
+
+      pcRef.current.addEventListener("addstream", (e) => {
+        console.log(e);
+      });
+
+      pcRef.current.ontrack = (ev) => {
+        console.log(ev.streams[0], "###");
+        console.log(stream, "###");
+        console.log("add remotetrack success");
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = ev.streams[0];
+        }
+      };
+      socketRef.current.emit("join_room", {
+        room: roomName,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const createOffer = async () => {
+    console.log("create offer");
+    if (!(pcRef.current && socketRef.current)) return;
+    try {
+      const sdp = await pcRef.current.createOffer();
+      await pcRef.current.setLocalDescription(new RTCSessionDescription(sdp));
+      console.log("sent offer");
+      socketRef.current.emit("offer", sdp);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const createAnswer = async (sdp: RTCSessionDescription) => {
+    if (!(pcRef.current && socketRef.current)) return;
+    try {
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
+      const mySdp = await pcRef.current.createAnswer();
+      await pcRef.current.setLocalDescription(new RTCSessionDescription(mySdp));
+      console.log("sent answer");
+      socketRef.current.emit("answer", mySdp);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
-    startMedia();
+    socketRef.current = io("localhost:8080");
 
-    socket.on("welcome", async (nickname, countRoom) => {
-      console.log("한분 추가요");
-      const offer = await myPeerConnection?.createOffer();
-      myPeerConnection?.setLocalDescription(offer);
-      console.log("sent the offer");
-      socket.emit("offer", offer, roomName);
+    pcRef.current = new RTCPeerConnection({
+      iceServers: [
+        {
+          urls: "stun:stun.l.google.com:19302",
+        },
+      ],
     });
 
-    socket.on("offer", async (offer) => {
-      console.log("recv offer");
-      await myPeerConnection.setRemoteDescription(offer);
-      const answer = await myPeerConnection?.createAnswer();
-      await myPeerConnection.setLocalDescription(answer);
-      console.log("sent the answer");
-      console.log(myPeerConnection);
-      socket.emit("answer", answer, roomName);
+    socketRef.current.on("all_users", (allUsers: Array<{ id: string }>) => {
+      if (allUsers.length > 0) {
+        createOffer();
+        console.log(11);
+      }
     });
 
-    socket.on("answer", async (answer) => {
-      console.log("recv answer", answer);
-      await myPeerConnection.setRemoteDescription(answer);
-      console.log(myPeerConnection);
+    socketRef.current.on("getOffer", (sdp: RTCSessionDescription) => {
+      //console.log(sdp);
+      console.log("get offer");
+      createAnswer(sdp);
     });
+
+    socketRef.current.on("getAnswer", (sdp: RTCSessionDescription) => {
+      console.log("get answer");
+      if (!pcRef.current) return;
+      pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
+      //console.log(sdp);
+    });
+
+    socketRef.current.on(
+      "getCandidate",
+      async (candidate: RTCIceCandidateInit) => {
+        if (!pcRef.current) return;
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log("candidate add success");
+      },
+    );
+
+    setVideoTracks();
 
     return () => {
-      socket.off();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      if (pcRef.current) {
+        pcRef.current.close();
+      }
     };
   }, []);
 
-  const startMedia = async () => {
-    let myStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: true,
-    });
-    await getMedia(myStream);
-    return makeConnection(myStream);
-  };
-
-  const getMedia = async (data: MediaStream) => {
-    if (!videoRef.current) {
-      return;
-    }
-    try {
-      videoRef.current.srcObject = data;
-      await getCameras();
-      setMyStream(data);
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
-  const getCameras = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter((device) => device.kind === "videoinput");
-      setCameraList(cameras);
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
-  const makeConnection = (myStream: MediaStream) => {
-    const peerConnection = new RTCPeerConnection();
-
-    peerConnection.addEventListener("icecandidate", handleIce);
-
-    myStream
-      ?.getTracks()
-      .forEach((track) => peerConnection?.addTrack(track, myStream));
-
-    return peerConnection;
-  };
-
-  const handleIce = (e: RTCPeerConnectionIceEvent) => {
-    console.log(e);
-  };
-
-  const onClickMuteBtn = () => {
-    myStream
-      ?.getAudioTracks()
-      .forEach((track) => (track.enabled = !track.enabled));
-    if (!mute) {
-      setMuteBtnText("음소거 하기");
-      setMute(true);
-    } else {
-      setMuteBtnText("음소거 해제");
-      setMute(false);
-    }
-  };
-
-  const onClickCameraTurnBtn = () => {
-    if (!camera) {
-      setCameraText("카메라 끄기");
-      setCamera(true);
-    } else {
-      setCameraText("카메라 켜기");
-      setCamera(false);
-    }
-    myStream
-      ?.getVideoTracks()
-      .forEach((track) => (track.enabled = !track.enabled));
-  };
-
-  const onChangeCamera = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    console.log(e.target.value);
-    setCameraSelect(e.target.value);
-  };
-
-  const onClickLeaveBtn = () => {
-    socket.disconnect();
-    navigate("/");
-  };
-
   return (
     <div>
-      <div>
-        <video ref={videoRef} autoPlay playsInline style={{ width: "400px" }} />
-      </div>
-      <div>
-        <button onClick={onClickMuteBtn}>{muteBtnText}</button>
-        <button onClick={onClickCameraTurnBtn}>{cameraText}</button>
-      </div>
-      <div>
-        <select onChange={onChangeCamera} value={cameraSelect}>
-          {cameraList?.map((item) => {
-            return (
-              <option key={item.deviceId} value={item.deviceId}>
-                {item.label}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-      <div>
-        <button onClick={onClickLeaveBtn}>떠나기</button>
-      </div>
+      <video
+        style={{
+          width: 240,
+          height: 240,
+          margin: 5,
+          backgroundColor: "black",
+        }}
+        muted
+        ref={localVideoRef}
+        autoPlay
+      />
+      <video
+        id="remotevideo"
+        style={{
+          width: 240,
+          height: 240,
+          margin: 5,
+          backgroundColor: "black",
+        }}
+        ref={remoteVideoRef}
+        autoPlay
+      />
     </div>
   );
 };
