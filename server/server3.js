@@ -15,13 +15,13 @@ const io = new Server(server, {
 const PORT = 8080;
 
 let users = {};
-
 let socketToRoom = {};
 
 const maximum = 2;
 app.use(cors());
 
 io.on("connection", (socket) => {
+  console.log(socket.id, "connection");
   socket.on("join_room", (data) => {
     if (users[data.room]) {
       const length = users[data.room].length;
@@ -29,7 +29,6 @@ io.on("connection", (socket) => {
         socket.to(socket.id).emit("room_full");
         return;
       }
-      users[data.room].push({ id: socket.id });
     } else {
       users[data.room] = [{ id: socket.id }];
     }
@@ -43,6 +42,8 @@ io.on("connection", (socket) => {
     );
 
     console.log(usersInThisRoom);
+    console.log(users, "####");
+    console.log(socketToRoom);
 
     io.sockets.to(socket.id).emit("all_users", usersInThisRoom);
   });

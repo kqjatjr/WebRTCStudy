@@ -16,18 +16,25 @@ const ChatView = () => {
 
   const setVideoTracks = async () => {
     try {
+      // 현재 내 미디어 데이터
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
+      // videoRef에 등록
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       if (!(pcRef.current && socketRef.current)) return;
+
+      socketRef.current.emit("join_room", {
+        room: roomName,
+      });
 
       stream.getTracks().forEach((track) => {
         if (!pcRef.current) return;
         pcRef.current.addTrack(track, stream);
       });
 
+      // 내 candidate 정보를 다른 유저에게 전달해야 한다.
       pcRef.current.onicecandidate = (e) => {
         if (e.candidate) {
           if (!socketRef.current) return;
@@ -36,20 +43,20 @@ const ChatView = () => {
         }
       };
 
-      pcRef.current.addEventListener("addstream", (e) => {
-        console.log(e);
-      });
+      console.log(pcRef.current);
 
       pcRef.current.ontrack = (ev) => {
-        console.log(ev.streams[0], "###");
-        console.log(stream, "###");
-        console.log("add remotetrack success");
+        console.log(ev.streams[0], "상대 Stream 정보");
+        console.log(stream, "내 Stream 정보");
+
         if (remoteVideoRef.current) {
+          // 상대 비디오 화면에 할당
           remoteVideoRef.current.srcObject = ev.streams[0];
         }
       };
-      socketRef.current.emit("join_room", {
-        room: roomName,
+
+      pcRef.current.addEventListener("addstream", (e) => {
+        console.log(e);
       });
     } catch (e) {
       console.error(e);
