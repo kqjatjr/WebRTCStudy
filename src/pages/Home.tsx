@@ -8,17 +8,9 @@ import { Socket } from "socket.io-client";
 // };
 const Home = () => {
   const [roomNumber, setRoomNumber] = useState("");
-  const [openRooms, setOpenRooms] = useState<string[]>([]);
   const [nickname, setNickname] = useState("");
 
   const navigate = useNavigate();
-
-  // useEffect(() => {
-  //   socket.connect();
-  //   socket.on("room_change", (rooms) => {
-  //     setOpenRooms(rooms);
-  //   });
-  // }, [socket]);
 
   const onChangeRoomNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRoomNumber(e.target.value);
@@ -29,10 +21,6 @@ const Home = () => {
   };
 
   const onSubmit = () => {
-    // if (!socket?.connected) {
-    //   socket?.connect();
-    // }
-    // socket?.emit("enter_room", { roomName: roomNumber, nickname: nickname });
     sessionStorage.setItem("nickname", nickname);
     setRoomNumber("");
     navigate(`/chat/${roomNumber}`);
@@ -45,7 +33,7 @@ const Home = () => {
   };
 
   return (
-    <div>
+    <div style={{ margin: "0 auto" }}>
       <div>
         <input
           placeholder="만들 방번호를 입력하세요"
@@ -60,15 +48,6 @@ const Home = () => {
         <button onClick={onSubmit} onKeyDown={onKeyDown}>
           방 입장
         </button>
-      </div>
-      <div>
-        <div>열려있는 방</div>
-        <ul>
-          {openRooms &&
-            openRooms.map((room) => {
-              return <li key={room}>{room}</li>;
-            })}
-        </ul>
       </div>
     </div>
   );

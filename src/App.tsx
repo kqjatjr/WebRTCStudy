@@ -1,16 +1,13 @@
-import "./App.css";
 import { Route, Routes } from "react-router-dom";
-import io from "socket.io-client";
 import Home from "./pages/Home";
-
-import ChatView from "./pages/aa";
+import VideoCall from "./pages/VideoCall";
 
 const App = () => {
   return (
     <div className="App">
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/chat/:roomName" element={<ChatView />} />
+        <Route path="/chat/:roomName" element={<VideoCall />} />
       </Routes>
     </div>
   );

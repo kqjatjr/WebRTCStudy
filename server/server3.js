@@ -2,23 +2,23 @@ const express = require("express");
 const app = express();
 const http = require("http");
 const { Server } = require("socket.io");
-let cors = require("cors");
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
     credentials: true,
   },
 });
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
 let users = {};
 let socketToRoom = {};
 
-const maximum = 2;
-app.use(cors());
+const maximum = 4;
 
 io.on("connection", (socket) => {
   console.log(socket.id, "connection");
@@ -29,6 +29,7 @@ io.on("connection", (socket) => {
         socket.to(socket.id).emit("room_full");
         return;
       }
+      users[data.room] = [...users[data.room], { id: socket.id }];
     } else {
       users[data.room] = [{ id: socket.id }];
     }
@@ -40,10 +41,9 @@ io.on("connection", (socket) => {
     const usersInThisRoom = users[data.room].filter(
       (user) => user.id !== socket.id,
     );
-
-    console.log(usersInThisRoom);
-    console.log(users, "####");
-    console.log(socketToRoom);
+    console.log(socketToRoom, "Join!!!!@!@!@!");
+    console.log(users, "connecting users");
+    // console.log(usersInThisRoom);
 
     io.sockets.to(socket.id).emit("all_users", usersInThisRoom);
   });
@@ -66,17 +66,20 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`[${socketToRoom[socket.id]}]: ${socket.id} exit`);
     const roomID = socketToRoom[socket.id];
-    let room = users[roomID];
-    if (room) {
-      room = room.filter((user) => user.id !== socket.id);
-      users[roomID] = room;
-      if (room.length === 0) {
+
+    if (users[roomID]) {
+      console.log(users, "Before");
+      users[roomID] = users[roomID].filter((user) => user.id !== socket.id);
+      if (users[roomID].length === 0) {
         delete users[roomID];
+        console.log(users, "After");
         return;
       }
     }
-    socket.broadcast.to(room).emit("user_exit", { id: socket.id });
-    console.log(users);
+    console.log(socketToRoom, "Before");
+    delete socketToRoom[socket.id];
+    console.log(socketToRoom, "After");
+    socket.broadcast.to(users[roomID]).emit("user_exit", { id: socket.id });
   });
 });
 

@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import io, { Socket } from "socket.io-client";
+import styles from "./VideoCall.module.scss";
 
-// type TProps = {
-//   socket: Socket & { nickname?: string };
-// };
-
-const ChatView = () => {
+const VideoCall = () => {
+  const [cameraList, setCameraList] = useState<MediaDeviceInfo[]>([]);
+  const [camera, setCamera] = useState(true);
+  const [cameraText, setCameraText] = useState("카메라 끄기");
   const socketRef = useRef<Socket>();
   const pcRef = useRef<RTCPeerConnection>();
+  const [myStream, setMyStream] = useState<MediaStream>();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
+  console.log(pcRef.current?.getTransceivers());
+
   const { roomName } = useParams();
+
+  const navigate = useNavigate();
 
   const setVideoTracks = async () => {
     try {
@@ -24,10 +29,6 @@ const ChatView = () => {
       // videoRef에 등록
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       if (!(pcRef.current && socketRef.current)) return;
-
-      socketRef.current.emit("join_room", {
-        room: roomName,
-      });
 
       stream.getTracks().forEach((track) => {
         if (!pcRef.current) return;
@@ -58,16 +59,31 @@ const ChatView = () => {
       pcRef.current.addEventListener("addstream", (e) => {
         console.log(e);
       });
+
+      getCameras();
+      setMyStream(stream);
     } catch (e) {
       console.error(e);
     }
   };
 
+  const getCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter((device) => device.kind === "videoinput");
+      setCameraList(cameras);
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  // Offer를 새로운 유저에게 전달
   const createOffer = async () => {
     console.log("create offer");
     if (!(pcRef.current && socketRef.current)) return;
     try {
       const sdp = await pcRef.current.createOffer();
+      // peerConnection localDescription에 내 sdp 등록
       await pcRef.current.setLocalDescription(new RTCSessionDescription(sdp));
       console.log("sent offer");
       socketRef.current.emit("offer", sdp);
@@ -90,7 +106,12 @@ const ChatView = () => {
   };
 
   useEffect(() => {
-    socketRef.current = io("localhost:8080");
+    socketRef.current = io("0.0.0.0:8080", {
+      withCredentials: true,
+      extraHeaders: {
+        "my-custom-header": "http://localhost:3000",
+      },
+    });
 
     pcRef.current = new RTCPeerConnection({
       iceServers: [
@@ -108,7 +129,6 @@ const ChatView = () => {
     });
 
     socketRef.current.on("getOffer", (sdp: RTCSessionDescription) => {
-      //console.log(sdp);
       console.log("get offer");
       createAnswer(sdp);
     });
@@ -117,7 +137,6 @@ const ChatView = () => {
       console.log("get answer");
       if (!pcRef.current) return;
       pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
-      //console.log(sdp);
     });
 
     socketRef.current.on(
@@ -131,6 +150,10 @@ const ChatView = () => {
 
     setVideoTracks();
 
+    socketRef.current.emit("join_room", {
+      room: roomName,
+    });
+
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
@@ -141,32 +164,74 @@ const ChatView = () => {
     };
   }, []);
 
+  const onClickLeaveBtn = () => {
+    if (socketRef.current) {
+      socketRef.current?.disconnect();
+    }
+    navigate("/");
+  };
+
+  const onClickCameraTurnBtn = () => {
+    if (!camera) {
+      setCameraText("카메라 끄기");
+      setCamera(true);
+    } else {
+      setCameraText("카메라 켜기");
+      setCamera(false);
+    }
+    myStream
+      ?.getVideoTracks()
+      .forEach((track) => (track.enabled = !track.enabled));
+  };
+
   return (
-    <div>
-      <video
-        style={{
-          width: 240,
-          height: 240,
-          margin: 5,
-          backgroundColor: "black",
-        }}
-        muted
-        ref={localVideoRef}
-        autoPlay
-      />
-      <video
-        id="remotevideo"
-        style={{
-          width: 240,
-          height: 240,
-          margin: 5,
-          backgroundColor: "black",
-        }}
-        ref={remoteVideoRef}
-        autoPlay
-      />
+    <div className={styles.container}>
+      <div className={styles.myVideo}>
+        <video
+          style={{
+            width: 240,
+            height: 240,
+            backgroundColor: "black",
+            marginBottom: "10px",
+          }}
+          muted
+          ref={localVideoRef}
+          autoPlay
+        />
+        <div>
+          <select>
+            {cameraList &&
+              cameraList.map((item) => {
+                return (
+                  <option key={item.deviceId} value={item.deviceId}>
+                    {item.label}
+                  </option>
+                );
+              })}
+          </select>
+          <div>
+            <button onClick={onClickCameraTurnBtn}>{cameraText}</button>
+          </div>
+        </div>
+        <div>
+          <button onClick={onClickLeaveBtn}>나가기</button>
+        </div>
+      </div>
+      <div className={styles.someoneVideo}>
+        <video
+          id="remotevideo"
+          style={{
+            width: 240,
+            height: 240,
+            backgroundColor: "black",
+            marginBottom: "10px",
+          }}
+          ref={remoteVideoRef}
+          autoPlay
+        />
+      </div>
     </div>
   );
 };
 
-export default ChatView;
+export default VideoCall;
