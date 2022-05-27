@@ -13,7 +13,7 @@ const VideoCall = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
-  console.log(pcRef.current?.getTransceivers());
+  console.log(pcRef.current);
 
   const { roomName } = useParams();
 
@@ -40,7 +40,7 @@ const VideoCall = () => {
         if (e.candidate) {
           if (!socketRef.current) return;
           console.log("recv candidate");
-          socketRef.current.emit("candidate", e.candidate);
+          socketRef.current.emit("candidate", e.candidate, roomName);
         }
       };
 
@@ -84,9 +84,9 @@ const VideoCall = () => {
     try {
       const sdp = await pcRef.current.createOffer();
       // peerConnection localDescription에 내 sdp 등록
-      await pcRef.current.setLocalDescription(new RTCSessionDescription(sdp));
+      pcRef.current.setLocalDescription(sdp);
       console.log("sent offer");
-      socketRef.current.emit("offer", sdp);
+      socketRef.current.emit("offer", sdp, roomName);
     } catch (e) {
       console.error(e);
     }
@@ -95,11 +95,11 @@ const VideoCall = () => {
   const createAnswer = async (sdp: RTCSessionDescription) => {
     if (!(pcRef.current && socketRef.current)) return;
     try {
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
+      pcRef.current.setRemoteDescription(sdp);
       const mySdp = await pcRef.current.createAnswer();
-      await pcRef.current.setLocalDescription(new RTCSessionDescription(mySdp));
+      pcRef.current.setLocalDescription(mySdp);
       console.log("sent answer");
-      socketRef.current.emit("answer", mySdp);
+      socketRef.current.emit("answer", mySdp, roomName);
     } catch (e) {
       console.error(e);
     }

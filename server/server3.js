@@ -45,22 +45,24 @@ io.on("connection", (socket) => {
     console.log(users, "connecting users");
     // console.log(usersInThisRoom);
 
-    io.sockets.to(socket.id).emit("all_users", usersInThisRoom);
+    if (usersInThisRoom.length) {
+      io.sockets.to(socket.id).emit("all_users", usersInThisRoom);
+    }
   });
 
-  socket.on("offer", (sdp) => {
+  socket.on("offer", (sdp, roomName) => {
     console.log("offer: " + socket.id);
-    socket.broadcast.emit("getOffer", sdp);
+    socket.to(roomName).emit("getOffer", sdp);
   });
 
-  socket.on("answer", (sdp) => {
+  socket.on("answer", (sdp, roomName) => {
     console.log("answer: " + socket.id);
-    socket.broadcast.emit("getAnswer", sdp);
+    socket.to(roomName).emit("getAnswer", sdp);
   });
 
-  socket.on("candidate", (candidate) => {
+  socket.on("candidate", (candidate, roomName) => {
     console.log("candidate: " + socket.id);
-    socket.broadcast.emit("getCandidate", candidate);
+    socket.to(roomName).emit("getCandidate", candidate);
   });
 
   socket.on("disconnect", () => {
