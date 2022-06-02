@@ -85,7 +85,7 @@ io.on("connection", (socket) => {
       }
     }
     socket.to(roomID).emit("user_exit", { id: socket.id });
-    console.log(users);
+    console.log(users, "disconnect");
   });
 });
 

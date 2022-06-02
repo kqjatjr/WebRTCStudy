@@ -43,7 +43,7 @@ const Video = ({ email, stream, muted }: Props) => {
   return (
     <Container>
       <VideoContainer ref={ref} muted={isMuted} autoPlay />
-      <UserLabel>{email}</UserLabel>
+      <UserLabel>{email} 님</UserLabel>
     </Container>
   );
 };

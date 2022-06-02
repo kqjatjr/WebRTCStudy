@@ -23,6 +23,8 @@ const VideoCall2 = () => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream>();
 
+  console.log(pcRef.current);
+
   const { roomName } = useParams();
 
   const navigate = useNavigate();
@@ -52,8 +54,10 @@ const VideoCall2 = () => {
 
   const createPeerConnection = useCallback(
     (socketID: string, email: string) => {
+      console.log("create PC");
       try {
         const pc = new RTCPeerConnection(pc_config);
+        console.log("my peerConnection", pc, "###");
 
         pc.onicecandidate = (e) => {
           if (!(socketRef.current && e.candidate)) return;
@@ -63,10 +67,6 @@ const VideoCall2 = () => {
             candidateSendID: socketRef.current.id,
             candidateReceiveID: socketID,
           });
-        };
-
-        pc.oniceconnectionstatechange = (e) => {
-          console.log(e);
         };
 
         pc.ontrack = (e) => {
@@ -103,7 +103,6 @@ const VideoCall2 = () => {
 
   useEffect(() => {
     socketRef.current = io(SOCKET_SERVER_URL);
-    getLocalStream();
 
     socketRef.current.on(
       "all_users",
@@ -119,11 +118,11 @@ const VideoCall2 = () => {
               offerToReceiveVideo: true,
             });
             console.log("create offer success");
-            await pc.setLocalDescription(new RTCSessionDescription(localSdp));
+            await pc.setLocalDescription(localSdp);
             socketRef.current.emit("offer", {
               sdp: localSdp,
               offerSendID: socketRef.current.id,
-              offerSendEmail: "offerSendSample@sample.com",
+              offerSendEmail: email,
               offerReceiveID: user.id,
             });
           } catch (e) {
@@ -148,7 +147,7 @@ const VideoCall2 = () => {
         pcRef.current = { ...pcRef.current, [offerSendID]: pc };
         try {
           console.log(sdp);
-          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          await pc.setRemoteDescription(sdp);
           console.log("answer set remote description success");
           const localSdp = await pc.createAnswer({
             offerToReceiveVideo: true,
@@ -173,7 +172,7 @@ const VideoCall2 = () => {
         console.log("get answer");
         const pc: RTCPeerConnection = pcRef.current[answerSendID];
         if (!pc) return;
-        pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        pc.setRemoteDescription(sdp);
       },
     );
 
@@ -186,7 +185,7 @@ const VideoCall2 = () => {
         console.log("get candidate");
         const pc: RTCPeerConnection = pcRef.current[data.candidateSendID];
         if (!pc) return;
-        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        await pc.addIceCandidate(data.candidate);
         console.log("candidate add success");
       },
     );
@@ -198,6 +197,8 @@ const VideoCall2 = () => {
       setUsers((oldUsers) => oldUsers.filter((user) => user.id !== data.id));
     });
 
+    getLocalStream();
+
     return () => {
       socketRef.current?.disconnect();
 
@@ -207,7 +208,6 @@ const VideoCall2 = () => {
         delete pcRef.current[user.id];
       });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onClickLeaveBtn = () => {
