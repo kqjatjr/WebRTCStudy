@@ -1,23 +1,93 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import io, { Socket } from "socket.io-client";
+import { WebRTCUser } from "../types";
 import styles from "./VideoCall.module.scss";
 
 const VideoCall = () => {
-  const [cameraList, setCameraList] = useState<MediaDeviceInfo[]>([]);
-  const [camera, setCamera] = useState(true);
-  const [cameraText, setCameraText] = useState("카메라 끄기");
   const socketRef = useRef<Socket>();
   const pcRef = useRef<RTCPeerConnection>();
-  const [myStream, setMyStream] = useState<MediaStream>();
+  const [users, setUsers] = useState<WebRTCUser[]>([]);
+  const [nickname] = useState(sessionStorage.getItem("nickname"));
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream>();
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-
-  console.log(pcRef.current);
 
   const { roomName } = useParams();
 
   const navigate = useNavigate();
+
+  const getLocalStream = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      localStreamRef.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      if (!socketRef.current) return;
+      socketRef.current.emit("join_room", {
+        room: roomName,
+        email: nickname,
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const createPeerConnection = async (socketId: string, email: string) => {
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          {
+            urls: "stun:stun.l.google.com:19302",
+          },
+        ],
+      });
+
+      pc.onicecandidate = (e) => {
+        if (!(socketRef.current && e.candidate)) return;
+        console.log("icecandidate!!!!");
+        socketRef.current.emit("candidate", {
+          candidate: e.candidate,
+          candidateSend: socketRef.current.id,
+          candidateReciveID: socketId,
+        });
+      };
+
+      pc.oniceconnectionstatechange = (e) => {
+        console.log(e);
+      };
+
+      pc.ontrack = (e) => {
+        console.log("track!");
+        setUsers((prev) => {
+          return prev
+            .filter((user) => user.id !== socketId)
+            .concat({
+              id: socketId,
+              email,
+              stream: e.streams[0],
+            });
+        });
+      };
+
+      if (localStreamRef.current) {
+        console.log("localstream add");
+        localStreamRef.current.getTracks().forEach((track) => {
+          if (!localStreamRef.current) return;
+          pc.addTrack(track, localStreamRef.current);
+        });
+      } else {
+        console.log("no local stream");
+      }
+
+      return pc;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
+  };
 
   const setVideoTracks = async () => {
     try {
@@ -59,21 +129,8 @@ const VideoCall = () => {
       pcRef.current.addEventListener("addstream", (e) => {
         console.log(e);
       });
-
-      getCameras();
-      setMyStream(stream);
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const getCameras = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter((device) => device.kind === "videoinput");
-      setCameraList(cameras);
-    } catch (e) {
-      console.log(e);
     }
   };
 
@@ -171,19 +228,6 @@ const VideoCall = () => {
     navigate("/");
   };
 
-  const onClickCameraTurnBtn = () => {
-    if (!camera) {
-      setCameraText("카메라 끄기");
-      setCamera(true);
-    } else {
-      setCameraText("카메라 켜기");
-      setCamera(false);
-    }
-    myStream
-      ?.getVideoTracks()
-      .forEach((track) => (track.enabled = !track.enabled));
-  };
-
   return (
     <div className={styles.container}>
       <div className={styles.myVideo}>
@@ -198,21 +242,6 @@ const VideoCall = () => {
           ref={localVideoRef}
           autoPlay
         />
-        <div>
-          <select>
-            {cameraList &&
-              cameraList.map((item) => {
-                return (
-                  <option key={item.deviceId} value={item.deviceId}>
-                    {item.label}
-                  </option>
-                );
-              })}
-          </select>
-          <div>
-            <button onClick={onClickCameraTurnBtn}>{cameraText}</button>
-          </div>
-        </div>
         <div>
           <button onClick={onClickLeaveBtn}>나가기</button>
         </div>

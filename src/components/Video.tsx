@@ -29,6 +29,7 @@ interface Props {
 }
 
 const Video = ({ email, stream, muted }: Props) => {
+  console.log("Video Component");
   const ref = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
