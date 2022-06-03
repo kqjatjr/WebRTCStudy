@@ -21,6 +21,11 @@ let socketToRoom = {};
 const maximum = 4;
 
 io.on("connection", (socket) => {
+  socket.on("room_meta", (data) => {
+    const roomMeta = users[data.room];
+    socket.emit("room_meta", { roomMeta });
+  });
+
   socket.on("join_room", (data) => {
     if (users[data.room]) {
       const length = users[data.room].length;
@@ -28,6 +33,11 @@ io.on("connection", (socket) => {
         socket.to(socket.id).emit("room_full");
         return;
       }
+
+      if (users[data.room].some((user) => user.id === socket.id)) {
+        return;
+      }
+
       users[data.room].push({ id: socket.id, email: data.email });
     } else {
       users[data.room] = [{ id: socket.id, email: data.email }];
@@ -45,7 +55,10 @@ io.on("connection", (socket) => {
 
     console.log(usersInThisRoom);
 
-    io.sockets.to(socket.id).emit("all_users", usersInThisRoom);
+    if (usersInThisRoom.length) {
+      // 본인에게 기존 방안에 있던 유저들의 정보를 전달
+      io.sockets.to(socket.id).emit("existing_users", usersInThisRoom);
+    }
   });
 
   socket.on("offer", (data) => {
@@ -85,7 +98,6 @@ io.on("connection", (socket) => {
       }
     }
     socket.to(roomID).emit("user_exit", { id: socket.id });
-    console.log(users, "disconnect");
   });
 });
 

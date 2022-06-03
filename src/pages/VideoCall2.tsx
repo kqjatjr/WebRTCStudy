@@ -18,19 +18,17 @@ const SOCKET_SERVER_URL = "http://localhost:8080";
 const VideoCall2 = () => {
   const socketRef = useRef<Socket>();
   const pcRef = useRef<{ [socketId: string]: RTCPeerConnection }>({});
-  const [users, setUsers] = useState<WebRTCUser[]>([]);
-  const [email] = useState(sessionStorage.getItem("nickname") || "");
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream>();
+  const [users, setUsers] = useState<WebRTCUser[]>([]);
+  const [email] = useState(sessionStorage.getItem("nickname") || "");
+  const { roomName } = useParams();
 
   console.log(pcRef.current);
-
-  const { roomName } = useParams();
 
   const navigate = useNavigate();
 
   const getLocalStream = useCallback(async () => {
-    console.log("두번?");
     try {
       const localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -54,10 +52,8 @@ const VideoCall2 = () => {
 
   const createPeerConnection = useCallback(
     (socketID: string, email: string) => {
-      console.log("create PC");
       try {
         const pc = new RTCPeerConnection(pc_config);
-        console.log("my peerConnection", pc, "###");
 
         pc.onicecandidate = (e) => {
           if (!(socketRef.current && e.candidate)) return;
@@ -102,12 +98,13 @@ const VideoCall2 = () => {
   );
 
   useEffect(() => {
-    socketRef.current = io(SOCKET_SERVER_URL);
+    const socket = io(SOCKET_SERVER_URL);
+    socketRef.current = socket;
 
     socketRef.current.on(
-      "all_users",
-      (allUsers: Array<{ id: string; email: string }>) => {
-        allUsers.forEach(async (user) => {
+      "existing_users",
+      (existingUsers: Array<{ id: string; email: string }>) => {
+        existingUsers.forEach(async (user) => {
           if (!localStreamRef.current) return;
           const pc = createPeerConnection(user.id, user.email);
           if (!(pc && socketRef.current)) return;
@@ -121,8 +118,11 @@ const VideoCall2 = () => {
             await pc.setLocalDescription(localSdp);
             socketRef.current.emit("offer", {
               sdp: localSdp,
+              // 보내는이
               offerSendID: socketRef.current.id,
+              // 보내는 사람 닉네임
               offerSendEmail: email,
+              // 받는이
               offerReceiveID: user.id,
             });
           } catch (e) {
@@ -146,17 +146,18 @@ const VideoCall2 = () => {
         if (!(pc && socketRef.current)) return;
         pcRef.current = { ...pcRef.current, [offerSendID]: pc };
         try {
-          console.log(sdp);
           await pc.setRemoteDescription(sdp);
           console.log("answer set remote description success");
           const localSdp = await pc.createAnswer({
             offerToReceiveVideo: true,
             offerToReceiveAudio: true,
           });
-          await pc.setLocalDescription(new RTCSessionDescription(localSdp));
+          await pc.setLocalDescription(localSdp);
           socketRef.current.emit("answer", {
             sdp: localSdp,
+            // 보내는이 ( 신규 접속자 )
             answerSendID: socketRef.current.id,
+            // 받는이
             answerReceiveID: offerSendID,
           });
         } catch (e) {
