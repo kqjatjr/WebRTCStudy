@@ -34,6 +34,7 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // strictMode에서 중복 연결신청 이슈때문에 같은 유저가 중복신청하면 막는로직
       if (users[data.room].some((user) => user.id === socket.id)) {
         return;
       }

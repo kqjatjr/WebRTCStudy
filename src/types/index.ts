@@ -1,5 +1,5 @@
 export type WebRTCUser = {
   id: string;
-  email: string;
+  email?: string;
   stream: MediaStream;
 };
