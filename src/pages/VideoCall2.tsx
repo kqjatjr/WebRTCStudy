@@ -24,8 +24,6 @@ const VideoCall2 = () => {
   const [email] = useState(sessionStorage.getItem("nickname") || "");
   const { roomName } = useParams();
 
-  console.log(pcRef.current);
-
   const navigate = useNavigate();
 
   const getLocalStream = useCallback(async () => {
@@ -97,6 +95,61 @@ const VideoCall2 = () => {
     [],
   );
 
+  const onChangeDefaultCodec = (pc: RTCPeerConnection, value: string) => {
+    const tcvr = pc.getTransceivers()[1];
+    const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
+    const changeCodec: RTCRtpCodecCapability[] = [];
+
+    for (let i = 0; i < codecs.length; i++) {
+      if (codecs[i].mimeType === value) {
+        changeCodec.push(codecs[i]);
+      }
+    }
+
+    if (tcvr.setCodecPreferences !== undefined) {
+      tcvr.setCodecPreferences(changeCodec);
+    }
+  };
+
+  const onChangeSdpCodec = (data: RTCSessionDescriptionInit) => {
+    const sdp = data.sdp;
+    let lines = sdp?.split("\n").map((line) => line.trim());
+    const newLine = lines?.reduce((acc, cur) => {
+      if (cur.indexOf("m=video") === 0) {
+        // console.log(line, "@@@@");
+        const parts = cur.split(" ");
+        const newParts = parts.slice(0, 3);
+        const codecNumber = parts.slice(3).reduce((acc, cur) => {
+          if (cur === "127") {
+            acc.unshift(cur);
+            return acc;
+          }
+
+          acc.push(cur);
+
+          return acc;
+        }, [] as string[]);
+
+        const newCodoec = [...newParts, ...codecNumber];
+
+        acc.push(newCodoec.join(" "));
+
+        return acc;
+      }
+
+      acc.push(cur);
+      return acc;
+    }, [] as string[]);
+
+    console.log(newLine, "@@");
+
+    data.sdp = newLine?.join("\n");
+
+    console.log(data.sdp, "@@@@");
+
+    return data.sdp;
+  };
+
   useEffect(() => {
     const socket = io(SOCKET_SERVER_URL);
     socketRef.current = socket;
@@ -107,13 +160,19 @@ const VideoCall2 = () => {
         existingUsers.forEach(async (user) => {
           if (!localStreamRef.current) return;
           const pc = createPeerConnection(user.id, user.email);
+
           if (!(pc && socketRef.current)) return;
+          // onChangeDefaultCodec(pc, "video/H264");
           pcRef.current = { ...pcRef.current, [user.id]: pc };
           try {
             const localSdp = await pc.createOffer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             });
+            // console.log(localSdp.sdp, "#####");
+            onChangeSdpCodec(localSdp);
+            console.log(localSdp.sdp, "!!!!");
+
             console.log("create offer success");
             await pc.setLocalDescription(localSdp);
             socketRef.current.emit("offer", {
@@ -143,7 +202,10 @@ const VideoCall2 = () => {
         console.log("get offer");
         if (!localStreamRef.current) return;
         const pc = createPeerConnection(offerSendID, offerSendEmail);
+
         if (!(pc && socketRef.current)) return;
+        // onChangeDefaultCodec(pc, "video/H264");
+
         pcRef.current = { ...pcRef.current, [offerSendID]: pc };
         try {
           await pc.setRemoteDescription(sdp);
@@ -152,6 +214,9 @@ const VideoCall2 = () => {
             offerToReceiveVideo: true,
             offerToReceiveAudio: true,
           });
+
+          console.log(localSdp.sdp, "#####");
+          onChangeSdpCodec(localSdp);
           await pc.setLocalDescription(localSdp);
           socketRef.current.emit("answer", {
             sdp: localSdp,

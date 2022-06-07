@@ -22,13 +22,13 @@ const UserLabel = styled.p`
   left: 0px;
 `;
 
-interface Props {
-  email?: string;
+interface TProps {
+  email: string | undefined;
   stream: MediaStream;
   muted?: boolean;
 }
 
-const Video = ({ stream, muted }: Props) => {
+const Video = ({ email, stream, muted }: TProps) => {
   console.log("Video Component");
   const ref = useRef<HTMLVideoElement>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -43,7 +43,7 @@ const Video = ({ stream, muted }: Props) => {
   return (
     <Container>
       <VideoContainer ref={ref} muted={isMuted} autoPlay />
-      <UserLabel> 님</UserLabel>
+      <UserLabel>{email} 님</UserLabel>
     </Container>
   );
 };
