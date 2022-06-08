@@ -7,67 +7,101 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
     credentials: true,
   },
 });
 
-const port = 8080;
+const PORT = process.env.PORT || 8080;
 
-const publicRooms = () => {
-  const {
-    sockets: {
-      adapter: { sids, rooms },
-    },
-  } = io;
+let users = {};
+let socketToRoom = {};
 
-  const publicRooms = [];
-  rooms.forEach((_, key) => {
-    if (!sids.get(key)) {
-      publicRooms.push(key);
+const maximum = 4;
+
+io.on("connection", (socket) => {
+  socket.on("room_meta", (data) => {
+    const roomMeta = users[data.room];
+    socket.emit("room_meta", { roomMeta });
+  });
+
+  socket.on("join_room", (data) => {
+    if (users[data.room]) {
+      const length = users[data.room].length;
+      if (length === maximum) {
+        socket.to(socket.id).emit("room_full");
+        return;
+      }
+
+      // strictMode에서 중복 연결신청 이슈때문에 같은 유저가 중복신청하면 막는로직
+      if (users[data.room].some((user) => user.id === socket.id)) {
+        return;
+      }
+
+      users[data.room].push({ id: socket.id, email: data.email });
+    } else {
+      users[data.room] = [{ id: socket.id, email: data.email }];
+    }
+    socketToRoom[socket.id] = data.room;
+
+    socket.join(data.room);
+    console.log(`[${socketToRoom[socket.id]}]: ${socket.id} enter`);
+
+    console.log(users);
+
+    const usersInThisRoom = users[data.room].filter(
+      (user) => user.id !== socket.id,
+    );
+
+    console.log(usersInThisRoom);
+
+    if (usersInThisRoom.length) {
+      // 본인에게 기존 방안에 있던 유저들의 정보를 전달
+      io.sockets.to(socket.id).emit("existing_users", usersInThisRoom);
     }
   });
 
-  return publicRooms;
-};
-
-const countRoom = (roomName) => {
-  return io.sockets.adapter.rooms.get(roomName)?.size;
-};
-
-io.on("connection", (socket) => {
-  socket["nickname"] = "Anon";
-  console.log("UserConnected", socket.id);
-  socket.emit("room_change", publicRooms());
-
-  socket.on("offer", (offer, roomName) => {
-    socket.to(roomName).emit("offer", offer);
-  });
-
-  socket.on("enter_room", ({ roomName, nickname }) => {
-    socket["nickname"] = nickname;
-    socket.join(roomName);
-    socket.emit("roomInfo", roomName, countRoom(roomName));
-    socket.to(roomName).emit("welcome", socket.nickname, countRoom(roomName));
-    io.sockets.emit("room_change", publicRooms());
-  });
-  socket.on("disconnecting", () => {
-    socket.rooms.forEach((room) => {
-      socket.to(room).emit("bye", socket.nickname, countRoom(room) - 1);
+  socket.on("offer", (data) => {
+    //console.log(data.sdp);
+    socket.to(data.offerReceiveID).emit("getOffer", {
+      sdp: data.sdp,
+      offerSendID: data.offerSendID,
+      offerSendEmail: data.offerSendEmail,
     });
   });
+
+  socket.on("answer", (data) => {
+    //console.log(data.sdp);
+    socket
+      .to(data.answerReceiveID)
+      .emit("getAnswer", { sdp: data.sdp, answerSendID: data.answerSendID });
+  });
+
+  socket.on("candidate", (data) => {
+    //console.log(data.candidate);
+    socket.to(data.candidateReceiveID).emit("getCandidate", {
+      candidate: data.candidate,
+      candidateSendID: data.candidateSendID,
+    });
+  });
+
   socket.on("disconnect", () => {
-    io.sockets.emit("room_change", publicRooms());
-  });
-  socket.on("new_message", ({ msg, roomName }, done) => {
-    socket.to(roomName).emit("new_message", `${socket.nickname} : ${msg}`);
-    done();
-  });
-  socket.on("answer", (answer, roomName) => {
-    socket.to(roomName).emit("answer", answer);
-  });
-  socket.on("ice", (ice, roomName) => {
-    socket.to(roomName).emit("ice", ice);
+    console.log(`[${socketToRoom[socket.id]}]: ${socket.id} exit`);
+    const roomID = socketToRoom[socket.id];
+    let room = users[roomID];
+    if (room) {
+      room = room.filter((user) => user.id !== socket.id);
+      users[roomID] = room;
+      if (room.length === 0) {
+        delete users[roomID];
+        return;
+      }
+    }
+    socket.to(roomID).emit("user_exit", { id: socket.id });
   });
 });
 
-server.listen(port, () => console.log(`Listening on port ${port}`));
+server.listen(PORT, () => {
+  console.log(`server running on ${PORT}`);
+});

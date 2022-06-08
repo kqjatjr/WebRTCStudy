@@ -1,151 +1,271 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import io, { Socket } from "socket.io-client";
+import Video from "../components/Video";
 import { WebRTCUser } from "../types";
+import * as sdpTransform from "sdp-transform";
+import UAParser from "ua-parser-js";
 import styles from "./VideoCall.module.scss";
+
+const pc_config = {
+  iceServers: [
+    {
+      urls: "stun:stun.l.google.com:19302",
+    },
+  ],
+};
+
+const SOCKET_SERVER_URL = "http://localhost:8080";
 
 const VideoCall = () => {
   const socketRef = useRef<Socket>();
-  const pcRef = useRef<RTCPeerConnection>();
-  const [users, setUsers] = useState<WebRTCUser[]>([]);
-  const [nickname] = useState(sessionStorage.getItem("nickname"));
+  const pcRef = useRef<{ [socketId: string]: RTCPeerConnection }>({});
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream>();
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-
+  const [users, setUsers] = useState<WebRTCUser[]>([]);
+  const [email] = useState(sessionStorage.getItem("nickname") || "");
   const { roomName } = useParams();
 
+  const parser = new UAParser();
   const navigate = useNavigate();
 
-  const setVideoTracks = async () => {
+  const getLocalStream = useCallback(async () => {
     try {
-      // 현재 내 미디어 데이터
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+      const localStream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-      });
-      // videoRef에 등록
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      if (!(pcRef.current && socketRef.current)) return;
-
-      stream.getTracks().forEach((track) => {
-        if (!pcRef.current) return;
-        pcRef.current.addTrack(track, stream);
+        video: {
+          width: 240,
+          height: 240,
+        },
       });
 
-      // 내 candidate 정보를 다른 유저에게 전달해야 한다.
-      pcRef.current.onicecandidate = (e) => {
-        if (e.candidate) {
-          if (!socketRef.current) return;
-          console.log("recv candidate");
-          socketRef.current.emit("candidate", e.candidate, roomName);
-        }
-      };
-
-      console.log(pcRef.current);
-
-      pcRef.current.ontrack = (ev) => {
-        console.log(ev.streams[0], "상대 Stream 정보");
-        console.log(stream, "내 Stream 정보");
-
-        if (remoteVideoRef.current) {
-          // 상대 비디오 화면에 할당
-          remoteVideoRef.current.srcObject = ev.streams[0];
-        }
-      };
-
-      pcRef.current.addEventListener("addstream", (e) => {
-        console.log(e);
+      localStreamRef.current = localStream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+      if (!socketRef.current) return;
+      socketRef.current.emit("join_room", {
+        room: roomName,
+        email: email,
       });
     } catch (e) {
-      console.error(e);
+      console.log(`getUserMedia error: ${e}`);
+    }
+  }, []);
+
+  const createPeerConnection = useCallback(
+    (socketID: string, email: string) => {
+      try {
+        const pc = new RTCPeerConnection(pc_config);
+
+        pc.onicecandidate = (e) => {
+          if (!(socketRef.current && e.candidate)) return;
+          console.log("onicecandidate");
+          socketRef.current.emit("candidate", {
+            candidate: e.candidate,
+            candidateSendID: socketRef.current.id,
+            candidateReceiveID: socketID,
+          });
+        };
+
+        pc.ontrack = (e) => {
+          console.log("ontrack success");
+          setUsers((oldUsers) =>
+            oldUsers
+              .filter((user) => user.id !== socketID)
+              .concat({
+                id: socketID,
+                email,
+                stream: e.streams[0],
+              }),
+          );
+        };
+
+        if (localStreamRef.current) {
+          console.log("localstream add");
+          localStreamRef.current.getTracks().forEach((track) => {
+            if (!localStreamRef.current) return;
+            pc.addTrack(track, localStreamRef.current);
+          });
+        } else {
+          console.log("no local stream");
+        }
+
+        return pc;
+      } catch (e) {
+        console.error(e);
+        return undefined;
+      }
+    },
+    [],
+  );
+
+  const onChangeDefaultCodec = (pc: RTCPeerConnection, value: string) => {
+    const tcvr = pc.getTransceivers()[1];
+    const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
+    const changeCodec: RTCRtpCodecCapability[] = [];
+
+    for (let i = 0; i < codecs.length; i++) {
+      if (codecs[i].mimeType === value) {
+        changeCodec.push(codecs[i]);
+      }
+    }
+
+    if (tcvr.setCodecPreferences !== undefined) {
+      tcvr.setCodecPreferences(changeCodec);
     }
   };
 
-  // Offer를 새로운 유저에게 전달
-  const createOffer = async () => {
-    console.log("create offer");
-    if (!(pcRef.current && socketRef.current)) return;
-    try {
-      const sdp = await pcRef.current.createOffer();
-      // peerConnection localDescription에 내 sdp 등록
-      pcRef.current.setLocalDescription(sdp);
-      console.log("sent offer");
-      socketRef.current.emit("offer", sdp, roomName);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  const onChangeSdpCodec = (
+    data: RTCSessionDescriptionInit,
+    browserH264Codec: number,
+  ) => {
+    const res = sdpTransform.parse(data.sdp || "");
 
-  const createAnswer = async (sdp: RTCSessionDescription) => {
-    if (!(pcRef.current && socketRef.current)) return;
-    try {
-      pcRef.current.setRemoteDescription(sdp);
-      const mySdp = await pcRef.current.createAnswer();
-      pcRef.current.setLocalDescription(mySdp);
-      console.log("sent answer");
-      socketRef.current.emit("answer", mySdp, roomName);
-    } catch (e) {
-      console.error(e);
-    }
+    const setCodec = sdpTransform
+      .parsePayloads(res.media[1].payloads || "")
+      .reduce((acc, cur) => {
+        if (cur === browserH264Codec) {
+          acc.unshift(cur);
+          return acc;
+        }
+        acc.push(cur);
+        return acc;
+      }, [] as number[]);
+
+    res.media[1].payloads = setCodec.join(" ");
+
+    return sdpTransform.write(res);
   };
 
   useEffect(() => {
-    socketRef.current = io("0.0.0.0:8080", {
-      withCredentials: true,
-      extraHeaders: {
-        "my-custom-header": "http://localhost:3000",
+    const socket = io(SOCKET_SERVER_URL);
+    socketRef.current = socket;
+
+    socketRef.current.on(
+      "existing_users",
+      (existingUsers: Array<{ id: string; email: string }>) => {
+        existingUsers.forEach(async (user) => {
+          if (!localStreamRef.current) return;
+          const pc = createPeerConnection(user.id, user.email);
+
+          if (!(pc && socketRef.current)) return;
+          // onChangeDefaultCodec(pc, "video/H264");
+          pcRef.current = { ...pcRef.current, [user.id]: pc };
+          try {
+            const localSdp = await pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: true,
+            });
+
+            if (parser.getBrowser().name === "Firefox") {
+              localSdp.sdp = onChangeSdpCodec(localSdp, 97);
+            } else {
+              localSdp.sdp = onChangeSdpCodec(localSdp, 127);
+            }
+
+            console.log(localSdp.sdp, "QQQQ");
+
+            await pc.setLocalDescription(localSdp);
+            socketRef.current.emit("offer", {
+              sdp: localSdp,
+              // 보내는이
+              offerSendID: socketRef.current.id,
+              // 보내는 사람 닉네임
+              offerSendEmail: email,
+              // 받는이
+              offerReceiveID: user.id,
+            });
+          } catch (e) {
+            console.error(e);
+          }
+        });
       },
-    });
+    );
 
-    pcRef.current = new RTCPeerConnection({
-      iceServers: [
-        {
-          urls: "stun:stun.l.google.com:19302",
-        },
-      ],
-    });
+    socketRef.current.on(
+      "getOffer",
+      async (data: {
+        sdp: RTCSessionDescription;
+        offerSendID: string;
+        offerSendEmail: string;
+      }) => {
+        const { sdp, offerSendID, offerSendEmail } = data;
+        console.log("get offer");
+        if (!localStreamRef.current) return;
+        const pc = createPeerConnection(offerSendID, offerSendEmail);
 
-    socketRef.current.on("all_users", (allUsers: Array<{ id: string }>) => {
-      if (allUsers.length > 0) {
-        createOffer();
-        console.log(11);
-      }
-    });
+        if (!(pc && socketRef.current)) return;
 
-    socketRef.current.on("getOffer", (sdp: RTCSessionDescription) => {
-      console.log("get offer");
-      createAnswer(sdp);
-    });
+        pcRef.current = { ...pcRef.current, [offerSendID]: pc };
+        try {
+          await pc.setRemoteDescription(sdp);
+          console.log("answer set remote description success");
+          const localSdp = await pc.createAnswer({
+            offerToReceiveVideo: true,
+            offerToReceiveAudio: true,
+          });
 
-    socketRef.current.on("getAnswer", (sdp: RTCSessionDescription) => {
-      console.log("get answer");
-      if (!pcRef.current) return;
-      pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
-    });
+          // if (parser.getBrowser().name === "Firefox") {
+          //   localSdp.sdp = onChangeSdpCodec(localSdp, 97);
+          // } else {
+          //   localSdp.sdp = onChangeSdpCodec(localSdp, 127);
+          // }
+
+          await pc.setLocalDescription(localSdp);
+          socketRef.current.emit("answer", {
+            sdp: localSdp,
+            // 보내는이 ( 신규 접속자 )
+            answerSendID: socketRef.current.id,
+            // 받는이
+            answerReceiveID: offerSendID,
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      },
+    );
+
+    socketRef.current.on(
+      "getAnswer",
+      (data: { sdp: RTCSessionDescription; answerSendID: string }) => {
+        const { sdp, answerSendID } = data;
+        console.log("get answer");
+        const pc: RTCPeerConnection = pcRef.current[answerSendID];
+        if (!pc) return;
+        pc.setRemoteDescription(sdp);
+      },
+    );
 
     socketRef.current.on(
       "getCandidate",
-      async (candidate: RTCIceCandidateInit) => {
-        if (!pcRef.current) return;
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      async (data: {
+        candidate: RTCIceCandidateInit;
+        candidateSendID: string;
+      }) => {
+        console.log("get candidate");
+        const pc: RTCPeerConnection = pcRef.current[data.candidateSendID];
+        if (!pc) return;
+        await pc.addIceCandidate(data.candidate);
         console.log("candidate add success");
       },
     );
 
-    setVideoTracks();
-
-    socketRef.current.emit("join_room", {
-      room: roomName,
+    socketRef.current.on("user_exit", (data: { id: string }) => {
+      if (!pcRef.current[data.id]) return;
+      pcRef.current[data.id].close();
+      delete pcRef.current[data.id];
+      setUsers((oldUsers) => oldUsers.filter((user) => user.id !== data.id));
     });
 
+    getLocalStream();
+
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-      if (pcRef.current) {
-        pcRef.current.close();
-      }
+      socketRef.current?.disconnect();
+
+      users.forEach((user) => {
+        if (!pcRef.current[user.id]) return;
+        pcRef.current[user.id].close();
+        delete pcRef.current[user.id];
+      });
     };
   }, []);
 
@@ -174,19 +294,9 @@ const VideoCall = () => {
           <button onClick={onClickLeaveBtn}>나가기</button>
         </div>
       </div>
-      <div className={styles.someoneVideo}>
-        <video
-          id="remotevideo"
-          style={{
-            width: 240,
-            height: 240,
-            backgroundColor: "black",
-            marginBottom: "10px",
-          }}
-          ref={remoteVideoRef}
-          autoPlay
-        />
-      </div>
+      {users.map((user, index) => {
+        return <Video key={index} email={user.email} stream={user.stream} />;
+      })}
     </div>
   );
 };
