@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import io, { Socket } from "socket.io-client";
 import Video from "../components/Video";
 import { WebRTCUser } from "../types";
+import * as sdpTransform from "sdp-transform";
+import UAParser from "ua-parser-js";
 import styles from "./VideoCall.module.scss";
 
 const pc_config = {
@@ -24,6 +26,7 @@ const VideoCall2 = () => {
   const [email] = useState(sessionStorage.getItem("nickname") || "");
   const { roomName } = useParams();
 
+  const parser = new UAParser();
   const navigate = useNavigate();
 
   const getLocalStream = useCallback(async () => {
@@ -111,43 +114,25 @@ const VideoCall2 = () => {
     }
   };
 
-  const onChangeSdpCodec = (data: RTCSessionDescriptionInit) => {
-    const sdp = data.sdp;
-    let lines = sdp?.split("\n").map((line) => line.trim());
-    const newLine = lines?.reduce((acc, cur) => {
-      if (cur.indexOf("m=video") === 0) {
-        // console.log(line, "@@@@");
-        const parts = cur.split(" ");
-        const newParts = parts.slice(0, 3);
-        const codecNumber = parts.slice(3).reduce((acc, cur) => {
-          if (cur === "127") {
-            acc.unshift(cur);
-            return acc;
-          }
+  const onChangeSdpCodec = (
+    data: RTCSessionDescriptionInit,
+    browserH264Codec: number,
+  ) => {
+    const res = sdpTransform.parse(data.sdp || "");
 
-          acc.push(cur);
-
+    const setCodec = sdpTransform
+      .parsePayloads(res.media[1].payloads || "")
+      .reduce((acc, cur) => {
+        if (cur === browserH264Codec) {
+          acc.unshift(cur);
           return acc;
-        }, [] as string[]);
-
-        const newCodoec = [...newParts, ...codecNumber];
-
-        acc.push(newCodoec.join(" "));
-
+        }
+        acc.push(cur);
         return acc;
-      }
+      }, [] as number[]);
+    res.media[1].payloads = setCodec.join(" ");
 
-      acc.push(cur);
-      return acc;
-    }, [] as string[]);
-
-    console.log(newLine, "@@");
-
-    data.sdp = newLine?.join("\n");
-
-    console.log(data.sdp, "@@@@");
-
-    return data.sdp;
+    return sdpTransform.write(res);
   };
 
   useEffect(() => {
@@ -169,11 +154,15 @@ const VideoCall2 = () => {
               offerToReceiveAudio: true,
               offerToReceiveVideo: true,
             });
-            // console.log(localSdp.sdp, "#####");
-            onChangeSdpCodec(localSdp);
-            console.log(localSdp.sdp, "!!!!");
 
-            console.log("create offer success");
+            if (parser.getBrowser().name === "Firefox") {
+              localSdp.sdp = onChangeSdpCodec(localSdp, 97);
+            } else {
+              localSdp.sdp = onChangeSdpCodec(localSdp, 127);
+            }
+
+            console.log(localSdp.sdp, "QQQQ");
+
             await pc.setLocalDescription(localSdp);
             socketRef.current.emit("offer", {
               sdp: localSdp,
@@ -204,7 +193,6 @@ const VideoCall2 = () => {
         const pc = createPeerConnection(offerSendID, offerSendEmail);
 
         if (!(pc && socketRef.current)) return;
-        // onChangeDefaultCodec(pc, "video/H264");
 
         pcRef.current = { ...pcRef.current, [offerSendID]: pc };
         try {
@@ -215,8 +203,12 @@ const VideoCall2 = () => {
             offerToReceiveAudio: true,
           });
 
-          console.log(localSdp.sdp, "#####");
-          onChangeSdpCodec(localSdp);
+          // if (parser.getBrowser().name === "Firefox") {
+          //   localSdp.sdp = onChangeSdpCodec(localSdp, 97);
+          // } else {
+          //   localSdp.sdp = onChangeSdpCodec(localSdp, 127);
+          // }
+
           await pc.setLocalDescription(localSdp);
           socketRef.current.emit("answer", {
             sdp: localSdp,
