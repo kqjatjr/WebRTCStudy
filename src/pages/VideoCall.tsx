@@ -98,7 +98,7 @@ const VideoCall = () => {
     [],
   );
 
-  const onChangeDefaultCodec = (pc: RTCPeerConnection, value: string) => {
+  const onChangeDefaultCodecs = (pc: RTCPeerConnection, value: string) => {
     const tcvr = pc.getTransceivers()[1];
     const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
     const changeCodec: RTCRtpCodecCapability[] = [];
@@ -114,7 +114,7 @@ const VideoCall = () => {
     }
   };
 
-  const onChangeSdpCodec = (
+  const onChangeDefaultCodec = (
     data: RTCSessionDescriptionInit,
     browserH264Codec: number,
   ) => {
@@ -148,7 +148,7 @@ const VideoCall = () => {
           const pc = createPeerConnection(user.id, user.email);
 
           if (!(pc && socketRef.current)) return;
-          // onChangeDefaultCodec(pc, "video/H264");
+
           pcRef.current = { ...pcRef.current, [user.id]: pc };
           try {
             const localSdp = await pc.createOffer({
@@ -156,11 +156,13 @@ const VideoCall = () => {
               offerToReceiveVideo: true,
             });
 
-            if (parser.getBrowser().name === "Firefox") {
-              localSdp.sdp = onChangeSdpCodec(localSdp, 97);
-            } else {
-              localSdp.sdp = onChangeSdpCodec(localSdp, 127);
-            }
+            console.log(localSdp.sdp, "체크 신규유입");
+
+            // if (parser.getBrowser().name === "Firefox") {
+            //   localSdp.sdp = onChangeDefaultCodec(localSdp, 97);
+            // } else {
+            //   localSdp.sdp = onChangeDefaultCodec(localSdp, 127);
+            // }
 
             console.log(localSdp.sdp, "QQQQ");
 
@@ -203,12 +205,7 @@ const VideoCall = () => {
             offerToReceiveVideo: true,
             offerToReceiveAudio: true,
           });
-
-          // if (parser.getBrowser().name === "Firefox") {
-          //   localSdp.sdp = onChangeSdpCodec(localSdp, 97);
-          // } else {
-          //   localSdp.sdp = onChangeSdpCodec(localSdp, 127);
-          // }
+          console.log(localSdp.sdp, "체크 기존유저");
 
           await pc.setLocalDescription(localSdp);
           socketRef.current.emit("answer", {
