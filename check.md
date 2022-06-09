@@ -59,6 +59,70 @@ const changeUsername = () => {
 - 함수형 프로그래밍을 지향하자!
 - 하나의 함수는 하나의 작업을 처리하도록 구현한다. (code formatter에 의해 줄바꿈되는 것을 제외하고 15줄을 넘으면 하나의 작업을 하는 함수가 절대 아니다.)
 
+```js
+// bad
+const onChangeDefaultCodec = (
+  data: RTCSessionDescriptionInit
+) => {
+  const res = sdpTransform.parse(data.sdp || "");
+
+  if (parser.getBrowser().name === "Firefox") {
+    const setCodec = sdpTransform
+      .parsePayloads(res.media[1].payloads || "")
+      .reduce((acc, cur) => {
+        if (cur === "97") {
+          acc.unshift(cur);
+          return acc;
+        }
+        acc.push(cur);
+        return acc;
+      }, [] as number[]);
+
+    res.media[1].payloads = setCodec.join(" ");
+    return sdpTransform.write(res);
+  }
+
+   const setCodec = sdpTransform
+      .parsePayloads(res.media[1].payloads || "")
+      .reduce((acc, cur) => {
+        if (cur === "127") {
+          acc.unshift(cur);
+          return acc;
+        }
+        acc.push(cur);
+        return acc;
+      }, [] as number[]);
+
+    res.media[1].payloads = setCodec.join(" ");
+
+    return sdpTransform.write(res);
+};
+
+
+// good
+const onChangeDefaultCodec = (
+    data: RTCSessionDescriptionInit,
+    browserH264Codec: number,
+  ) => {
+    const res = sdpTransform.parse(data.sdp || "");
+
+    const setCodec = sdpTransform
+      .parsePayloads(res.media[1].payloads || "")
+      .reduce((acc, cur) => {
+        if (cur === browserH264Codec) {
+          acc.unshift(cur);
+          return acc;
+        }
+        acc.push(cur);
+        return acc;
+      }, [] as number[]);
+
+    res.media[1].payloads = setCodec.join(" ");
+
+    return sdpTransform.write(res);
+};
+```
+
 - 인터페이스와 추상클래스를 적극 활용하자.
 - 클래스의 변경이 필요한 경우 상속하여 처리하는 것을 우선으로 한다.
 - 에러 던지기를 아끼지 말자.

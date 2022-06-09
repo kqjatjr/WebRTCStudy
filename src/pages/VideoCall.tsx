@@ -98,22 +98,6 @@ const VideoCall = () => {
     [],
   );
 
-  const onChangeDefaultCodecs = (pc: RTCPeerConnection, value: string) => {
-    const tcvr = pc.getTransceivers()[1];
-    const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
-    const changeCodec: RTCRtpCodecCapability[] = [];
-
-    for (let i = 0; i < codecs.length; i++) {
-      if (codecs[i].mimeType === value) {
-        changeCodec.push(codecs[i]);
-      }
-    }
-
-    if (tcvr.setCodecPreferences !== undefined) {
-      tcvr.setCodecPreferences(changeCodec);
-    }
-  };
-
   const onChangeDefaultCodec = (
     data: RTCSessionDescriptionInit,
     browserH264Codec: number,
@@ -156,15 +140,11 @@ const VideoCall = () => {
               offerToReceiveVideo: true,
             });
 
-            console.log(localSdp.sdp, "체크 신규유입");
-
-            // if (parser.getBrowser().name === "Firefox") {
-            //   localSdp.sdp = onChangeDefaultCodec(localSdp, 97);
-            // } else {
-            //   localSdp.sdp = onChangeDefaultCodec(localSdp, 127);
-            // }
-
-            console.log(localSdp.sdp, "QQQQ");
+            if (parser.getBrowser().name === "Firefox") {
+              localSdp.sdp = onChangeDefaultCodec(localSdp, 97);
+            } else {
+              localSdp.sdp = onChangeDefaultCodec(localSdp, 127);
+            }
 
             await pc.setLocalDescription(localSdp);
             socketRef.current.emit("offer", {
@@ -205,7 +185,6 @@ const VideoCall = () => {
             offerToReceiveVideo: true,
             offerToReceiveAudio: true,
           });
-          console.log(localSdp.sdp, "체크 기존유저");
 
           await pc.setLocalDescription(localSdp);
           socketRef.current.emit("answer", {
